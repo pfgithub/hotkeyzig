@@ -3,6 +3,7 @@ const c = @cImport({
     @cInclude("xcb/xcb.h");
     @cInclude("xcb/xcb_keysyms.h");
 });
+pub usingnamespace @import("xcb_generated.zig");
 
 // zig test src/xcb.zig -lxcb -lc
 fn matches(comptime A: type, comptime B: type) void {
@@ -94,11 +95,11 @@ pub const Connection = opaque {
     pub const setup = xcb_get_setup;
     
     extern fn xcb_get_input_focus(c: *Connection) InputFocus;
-    extern fn xcb_get_input_focus_reply(c: *Connection, cookie: InputFocus, e: ?*?[*]GenericError) InputFocus.Reply;
-    const InputFocus = AutoCookie(*InputFocusReply, struct{const method = xcb_get_input_focus_reply;}, .cannot_error);
+    extern fn xcb_get_input_focus_reply(c: *Connection, cookie: InputFocus, e: ?*?*GenericError) *InputFocus.Reply;
+    const InputFocus = AutoCookie(InputFocusReply, struct{const method = xcb_get_input_focus_reply;}, .cannot_error);
     pub const getInputFocus = xcb_get_input_focus;
     
-    extern fn xcb_change_window_attributes(c: *Connection, window: Window, value_mask: u32, value_list: [*]const u32) VoidCookie;
+    extern fn xcb_change_window_attributes_checked(c: *Connection, window: Window, value_mask: u32, value_list: [*]const u32) VoidCookie;
     pub fn changeWindowAttribute(conn: *Connection, window: Window, value: WindowAttribute) VoidCookie {
         var value_mask: u32 = 0;
         var buf = [_]u32{undefined} ** @typeInfo(WindowAttribute).Struct.fields.len;
@@ -114,7 +115,33 @@ pub const Connection = opaque {
                 }
             } 
         }
-        return conn.xcb_change_window_attributes(window, value_mask, &buf);
+        std.log.info("buf: {} {b} {} {}", .{window, buf[0], bufidx, value_mask});
+        return conn.xcb_change_window_attributes_checked(window, value_mask, &buf);
+    }
+    
+    pub extern fn xcb_wait_for_event(c: *Connection) ?*GenericEvent;
+    pub fn waitForEvent(conn: *Connection) ?GenericEvent {
+        const event = conn.xcb_wait_for_event() orelse return null;
+        defer free(event);
+        return event.*;
+    }
+    pub extern fn xcb_poll_for_event(c: *Connection) ?*GenericEvent;
+    pub fn pollForEvent(conn: *Connection) ?GenericEvent {
+        const event = conn.xcb_poll_for_event() orelse return null;
+        defer free(event);
+        return event.*;
+    }
+};
+
+pub const GenericEvent = extern struct {
+    response_type: u8,
+    pad0: u8,
+    sequence: u16,
+    pad: [7]u32,
+    full_sequence: u32,
+    
+    pub fn tag(event: GenericEvent) EventTag {
+        return @intToEnum(EventTag, event.response_type);
     }
 };
 
@@ -194,7 +221,9 @@ fn AutoCookie(comptime ReplyType: type, comptime ReplyMethod: type, comptime can
             sequence: c_uint,
             const Reply = ReplyType;
             pub fn wait(cookie: @This(), conn: *Connection) ReplyType {
-                return ReplyMethod.method(conn, cookie, null);
+                const result = ReplyMethod.method(conn, cookie, null);
+                defer free(result);
+                return result.*;
             }
         },
         .can_error => return extern struct {
@@ -203,11 +232,13 @@ fn AutoCookie(comptime ReplyType: type, comptime ReplyMethod: type, comptime can
             pub fn wait(cookie: @This(), conn: *Connection) !ReplyType {
                 var err: ?[*]GenericError = null;
                 const result = ReplyMethod.method(conn, cookie, &err);
+                std.log.info("Waited!", .{});
                 if(err) |er| {
                     defer free(er);
                     return error.XcbError;
                 }
-                return result;
+                defer free(result);
+                return result.*;
             }
         },
     }
@@ -222,7 +253,7 @@ const InputFocusReply = extern struct {
     window: Window,
 };
 test "struct" {matches(GenericError, c.xcb_generic_error_t);}
-const GenericError = extern struct {
+pub const GenericError = extern struct {
     response_type: u8,
     error_code: u8,
     sequence: u16,
@@ -232,6 +263,29 @@ const GenericError = extern struct {
     pad0: u8,
     pad: [5]u32,
     full_sequence: u32,
+    pub fn errorString(err: GenericError) []const u8 {
+        return switch(err.error_code) {
+            0 => "Success : success",
+            1 => "BadRequest : bad request code",
+            2 => "BadValue : int parameter out of range",
+            3 => "BadWindow : parameter not a Window",
+            4 => "BadPixmap : parameter not a Pixmap",
+            5 => "BadAtom : parameter not an Atom",
+            6 => "BadCursor : parameter not a Cursor",
+            7 => "BadFont : parameter not a Font",
+            8 => "BadMatch : parameter mismatch",
+            9 => "BadDrawable : parameter not a Pixmap or Window",
+            10 => "BadAccess : key/button already grabbed | attempt to free illegal cmap entry | attempt to store into a read-only colormap entry | attempt to modify access control list from other host",
+            11 => "BadAlloc : insufficient resources",
+            12 => "BadColor : no such colormap",
+            13 => "BadGC : parameter not a GC",
+            14 => "BadIDChoice : choice not in range or already used",
+            15 => "BadName : font or color name does not exist",
+            16 => "BadLength : request length incorrect",
+            17 => "BadImplementation : server is defective",
+            else => "?? : unknown error",
+        };
+    }
 };
 
 // apparently there is XCB_CW_WIN_GRAVITY

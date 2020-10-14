@@ -6,18 +6,27 @@ pub fn main() !void {
     defer connection.disconnect();
     
     std.log.info("Connected", .{});
+    defer std.log.info("Exiting", .{});
     
     const screen = connection.setup().rootsIterator().data;
     
     const root = screen.root;
     
     const focus = connection.getInputFocus().wait(connection);
-    defer xcb.free(focus); // why do I have to free it? why can't I just copy it onto the stack?
-    // maybe I will make .wait() do that because freeing pointers from every function is dumb
     
     std.log.info("Got focused window: {}", .{focus});
     
-    try connection.changeWindowAttribute(focus.window, .{.event_mask = .{.key_press = true, .key_release = true, .focus_change = true}}).wait(connection);
+    try connection.changeWindowAttribute(focus.window, .{.event_mask = .{.key_press = true, .key_release = true, .focus_change = true, .button_press = true}}).wait(connection);
     
-    std.log.info("Changed window attribute", .{});
+    while(connection.waitForEvent()) |event| {
+        // why does one example say to do (event->response_type & ~0x80)?
+        std.log.info("Got event {}", .{event.tag()});
+        switch(event.tag()) {
+            .x11_error => {
+                const err = @bitCast(xcb.GenericError, event);
+                std.log.err("Got error! {}", .{err.errorString()});
+            },
+            else =>{},
+        }
+    }
 }

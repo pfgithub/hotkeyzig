@@ -8,6 +8,8 @@
 // once the mouse hits the edge of the screen,
 // take over control of the mouse
 
+// zig run -lc -lX11 src/main.c
+
 int main ()
 {
     Display* d = XOpenDisplay(NULL);
