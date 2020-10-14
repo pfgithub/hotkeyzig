@@ -202,10 +202,11 @@ pub const WindowAttribute = struct {
 
 const VoidCookie = extern struct {
     sequence: c_uint,
-    pub extern fn xcb_request_check(c: *Connection, cookie: VoidCookie) ?[*]GenericError;
+    pub extern fn xcb_request_check(c: *Connection, cookie: VoidCookie) ?*GenericError;
     pub fn wait(cookie: @This(), conn: *Connection) !void {
         if(xcb_request_check(conn, cookie)) |err| {
             defer free(err);
+            std.log.err("Got error: {}", .{err.errorString()});
             return error.XcbError;
         }
     }

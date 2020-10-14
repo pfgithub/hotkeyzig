@@ -16,7 +16,7 @@ pub fn main() !void {
     
     std.log.info("Got focused window: {}", .{focus});
     
-    try connection.changeWindowAttribute(focus.window, .{.event_mask = .{.key_press = true, .key_release = true, .focus_change = true, .button_press = true}}).wait(connection);
+    try connection.changeWindowAttribute(focus.window, .{.event_mask = .{.key_press = true, .key_release = true, .focus_change = true}}).wait(connection);
     
     while(connection.waitForEvent()) |event| {
         // why does one example say to do (event->response_type & ~0x80)?
