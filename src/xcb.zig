@@ -93,11 +93,94 @@ pub const Connection = opaque {
     extern fn xcb_get_setup(c: *Connection) *const Setup;
     pub const setup = xcb_get_setup;
     
-    extern fn xcb_get_input_focus(c: *Connection) InputFocus.Cookie;
-    extern fn xcb_get_input_focus_reply(c: *Connection, cookie: InputFocus.Cookie, e: ?**GenericError) InputFocus.Reply;
-    const InputFocus = AutoCookie(*InputFocusReply, struct{const method = xcb_get_input_focus_reply;});
-    pub fn getInputFocus(conn: *Connection) InputFocus {
-        return InputFocus.wrap(conn, xcb_get_input_focus(conn));
+    extern fn xcb_get_input_focus(c: *Connection) InputFocus;
+    extern fn xcb_get_input_focus_reply(c: *Connection, cookie: InputFocus, e: ?*?[*]GenericError) InputFocus.Reply;
+    const InputFocus = AutoCookie(*InputFocusReply, struct{const method = xcb_get_input_focus_reply;}, .cannot_error);
+    pub const getInputFocus = xcb_get_input_focus;
+    
+    extern fn xcb_change_window_attributes(c: *Connection, window: Window, value_mask: u32, value_list: [*]const u32) VoidCookie;
+    pub fn changeWindowAttribute(conn: *Connection, window: Window, value: WindowAttribute) VoidCookie {
+        var value_mask: u32 = 0;
+        var buf = [_]u32{undefined} ** @typeInfo(WindowAttribute).Struct.fields.len;
+        var bufidx: usize = 0;
+        inline for(@typeInfo(WindowAttribute).Struct.fields) |field, i| {
+            if(@field(value, field.name)) |attr| {
+                value_mask |= 1 << i;
+                defer bufidx += 1;
+                if(@TypeOf(attr) == u32) {
+                    buf[bufidx] = attr;
+                }else{
+                    buf[bufidx] = attr.toU32();
+                }
+            } 
+        }
+        return conn.xcb_change_window_attributes(window, value_mask, &buf);
+    }
+};
+
+pub const WindowAttribute = struct {
+    const EventMask = struct {
+        no_event: bool = false,
+        key_press: bool = false,
+        key_release: bool = false,
+        button_press: bool = false,
+        button_release: bool = false,
+        
+        enter_window: bool = false,
+        leave_window: bool = false,
+        pointer_motion: bool = false,
+        pointer_motion_hint: bool = false,
+        button_1_motion: bool = false,
+        button_2_motion: bool = false,
+        button_3_motion: bool = false,
+        button_4_motion: bool = false,
+        button_5_motion: bool = false,
+        keymap_state: bool = false,
+        visibility_change: bool = false,
+        structure_notify: bool = false,
+        resize_redirect: bool = false,
+        substructure_notify: bool = false,
+        substructure_redirect: bool = false,
+        focus_change: bool = false,
+        property_change: bool = false,
+        color_change: bool = false,
+        owner_grab_button: bool = false,
+        
+        fn toU32(self: EventMask) u32 {
+            var result_type: std.meta.Int(false, @typeInfo(EventMask).Struct.fields.len) = 0;
+            inline for(@typeInfo(EventMask).Struct.fields) |field, i| {
+                if(@field(self, field.name)) {
+                    result_type |= 1 << i;
+                }
+            }
+            return result_type;
+        }
+    };
+    back_pixmap: ?u32 = null,
+    back_pixel: ?u32 = null,
+    border_pixmap: ?u32 = null,
+    border_pixel: ?u32 = null,
+    bit_gravity: ?u32 = null,
+    win_gravity: ?u32 = null,
+    backing_store: ?u32 = null,
+    backing_planes: ?u32 = null,
+    backing_pixel: ?u32 = null,
+    override_redirect: ?u32 = null,
+    save_under: ?u32 = null,
+    event_mask: ?EventMask = null,
+    dont_propagate: ?u32 = null,
+    colormap: ?u32 = null,
+    cursor: ?u32 = null,
+};
+
+const VoidCookie = extern struct {
+    sequence: c_uint,
+    pub extern fn xcb_request_check(c: *Connection, cookie: VoidCookie) ?[*]GenericError;
+    pub fn wait(cookie: @This(), conn: *Connection) !void {
+        if(xcb_request_check(conn, cookie)) |err| {
+            defer free(err);
+            return error.XcbError;
+        }
     }
 };
 
@@ -105,19 +188,29 @@ pub fn free(ptr: anytype) void {
     std.heap.c_allocator.destroy(ptr);
 }
 
-fn AutoCookie(comptime ReplyType: type, comptime ReplyMethod: type) type {
-    return struct {
-        cookie: Cookie,
-        connection: *Connection,
-        const Cookie = extern struct {sequence: c_uint};
-        const Reply = ReplyType;
-        pub fn wrap(conn: *Connection, cookie: Cookie) @This() {
-            return .{.connection = conn, .cookie = cookie};
-        } 
-        pub fn wait(cookie: @This()) ReplyType {
-            return ReplyMethod.method(cookie.connection, cookie.cookie, null);
-        }
-    };
+fn AutoCookie(comptime ReplyType: type, comptime ReplyMethod: type, comptime can_error: enum{can_error, cannot_error}) type {
+    switch(can_error) {
+        .cannot_error => return extern struct {
+            sequence: c_uint,
+            const Reply = ReplyType;
+            pub fn wait(cookie: @This(), conn: *Connection) ReplyType {
+                return ReplyMethod.method(conn, cookie, null);
+            }
+        },
+        .can_error => return extern struct {
+            sequence: c_uint,
+            const Reply = ReplyType;
+            pub fn wait(cookie: @This(), conn: *Connection) !ReplyType {
+                var err: ?[*]GenericError = null;
+                const result = ReplyMethod.method(conn, cookie, &err);
+                if(err) |er| {
+                    defer free(er);
+                    return error.XcbError;
+                }
+                return result;
+            }
+        },
+    }
 }
 
 test "struct" {matches(InputFocusReply, c.xcb_get_input_focus_reply_t);}
@@ -126,7 +219,7 @@ const InputFocusReply = extern struct {
     revert_to: u8,
     sequence: u16,
     length: u32,
-    focus: Window,
+    window: Window,
 };
 test "struct" {matches(GenericError, c.xcb_generic_error_t);}
 const GenericError = extern struct {
