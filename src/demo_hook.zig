@@ -21,9 +21,11 @@ fn dispatch_proc(c_event: [*c]const c.uiohook_event) callconv(.C) void {
         .EVENT_MOUSE_RELEASED => std.debug.warn("↑m", .{}),
         .EVENT_MOUSE_CLICKED => std.debug.warn("· m", .{}),
         .EVENT_MOUSE_WHEEL => std.debug.warn("w", .{}),
-        else => {return;},
+        .EVENT_MOUSE_MOVED => return,
+        .EVENT_MOUSE_DRAGGED => return,
+        else => std.debug.warn("Unknown: {}", .{event.@"type"}),
     }
-    std.debug.warn("\x1b[K", .{});
+    std.debug.warn("\x1b[K\n", .{});
 }
 
 pub fn main() !void {
