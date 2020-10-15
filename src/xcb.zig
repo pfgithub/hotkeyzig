@@ -308,6 +308,9 @@ fn AutoCookie(comptime ReplyType: type, comptime ReplyMethod: type, comptime can
                 defer free(result);
                 return result.*;
             }
+            pub fn waitPtr(cookie: @This(), conn: *Connection) *ReplyType {
+                return ReplyMethod.method(conn, cookie, null);
+            }
         },
         .can_error => return extern struct {
             sequence: c_uint,
@@ -322,6 +325,16 @@ fn AutoCookie(comptime ReplyType: type, comptime ReplyMethod: type, comptime can
                 }
                 defer free(result);
                 return result.*;
+            }
+            pub fn waitPtr(cookie: @This(), conn: *Connection) !*ReplyType {
+                var err: ?*GenericError = null;
+                const result = ReplyMethod.method(conn, cookie, &err);
+                if(err) |er| {
+                    defer free(er);
+                    std.log.err("{}", .{er.errorString()});
+                    return error.XcbError;
+                }
+                return result;
             }
         },
     }

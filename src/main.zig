@@ -27,11 +27,12 @@ pub fn main() !void {
     
     // there is an xcb xinput extension
     
-    const input_devices = conn.listInputDevices().wait(conn).devices();
+    const input_devices = conn.listInputDevices().waitPtr(conn).devices();
     for(input_devices) |device| {
-        std.log.info("Got input device: {}", .{device.device_type});
+        std.log.info("Got input device: {}", .{device});
+        // std.log.info("Got input device: {}", .{device.device_type});
         // if(@enumToInt(device.device_type) == 0) continue;
-        if(conn.getAtomName(device.device_type).wait(conn)) |atom| {
+        if(conn.getAtomName(device.device_type).waitPtr(conn)) |atom| {
             const text = atom.text();
             // for(text) |char| std.log.info("Char: `{}`", .{char});
             std.log.info("Type: `{}`", .{atom.text()});
@@ -64,15 +65,15 @@ pub fn main() !void {
     
     // try conn.changeWindowAttribute(focus.window, .{.event_mask = .{.key_press = true, .key_release = true, .focus_change = true}}).wait(conn);
     
-    while(conn.waitForEvent()) |event| {
-        // why does one example say to do (event->response_type & ~0x80)?
-        std.log.info("Got event {}", .{event.tag()});
-        switch(event.tag()) {
-            .x11_error => {
-                const err = @bitCast(xcb.GenericError, event);
-                std.log.err("Got error! {}", .{err.errorString()});
-            },
-            else =>{},
-        }
-    }
+    // while(conn.waitForEvent()) |event| {
+    //     // why does one example say to do (event->response_type & ~0x80)?
+    //     std.log.info("Got event {}", .{event.tag()});
+    //     switch(event.tag()) {
+    //         .x11_error => {
+    //             const err = @bitCast(xcb.GenericError, event);
+    //             std.log.err("Got error! {}", .{err.errorString()});
+    //         },
+    //         else =>{},
+    //     }
+    // }
 }
