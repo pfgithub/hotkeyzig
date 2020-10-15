@@ -35,7 +35,7 @@ pub fn main() !void {
             const text = atom.text();
             for(text) |char| std.log.info("Char: `{}`", .{char});
             std.log.info("Type: `{}`", .{atom.text()});
-        }else |err| std.log.err("Err: {}", .{err});
+        } else |err| std.log.err("Err: {}", .{err});
     }
     
     // ok new plan
