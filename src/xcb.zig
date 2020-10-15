@@ -6,7 +6,7 @@ const c = @cImport({
 });
 pub usingnamespace @import("xcb_generated.zig");
 
-// zig test src/xcb.zig -lxcb -lc
+// zig test src/xcb.zig -lxcb -lxcb-xinput -lc
 fn matches(comptime A: type, comptime B: type) void {
     comptime {
         if(A == B) return;
