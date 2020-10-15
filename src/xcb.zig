@@ -119,13 +119,13 @@ pub const Connection = opaque {
         return conn.xcb_change_window_attributes_checked(window, value_mask, &buf);
     }
     
-    pub extern fn xcb_wait_for_event(c: *Connection) ?*GenericEvent;
+    extern fn xcb_wait_for_event(c: *Connection) ?*GenericEvent;
     pub fn waitForEvent(conn: *Connection) ?GenericEvent {
         const event = conn.xcb_wait_for_event() orelse return null;
         defer free(event);
         return event.*;
     }
-    pub extern fn xcb_poll_for_event(c: *Connection) ?*GenericEvent;
+    extern fn xcb_poll_for_event(c: *Connection) ?*GenericEvent;
     pub fn pollForEvent(conn: *Connection) ?GenericEvent {
         const event = conn.xcb_poll_for_event() orelse return null;
         defer free(event);
@@ -202,7 +202,7 @@ pub const WindowAttribute = struct {
 
 const VoidCookie = extern struct {
     sequence: c_uint,
-    pub extern fn xcb_request_check(c: *Connection, cookie: VoidCookie) ?*GenericError;
+    extern fn xcb_request_check(c: *Connection, cookie: VoidCookie) ?*GenericError;
     pub fn wait(cookie: @This(), conn: *Connection) !void {
         if(xcb_request_check(conn, cookie)) |err| {
             defer free(err);
