@@ -3,8 +3,27 @@ const c = @cImport({@cInclude("uiohook.h");});
 
 extern fn logger_proc(level: c_uint, format: [*c]const u8, ...) callconv(.C) bool;
 
-fn dispatch_proc(event: [*c]const c.uiohook_event) callconv(.C) void {
-    std.log.info("Got event: {}", .{event.*});
+fn dispatch_proc(c_event: [*c]const c.uiohook_event) callconv(.C) void {
+    const event: *const c.uiohook_event = c_event;
+    std.debug.warn("\r", .{});
+    switch(event.@"type") {
+        .EVENT_KEY_PRESSED => std.debug.warn("↓Key", .{}),
+        .EVENT_KEY_RELEASED => std.debug.warn("↑Key", .{}),
+        .EVENT_KEY_TYPED => blk: {
+            // {u} please
+            var buf = [_]u8{undefined} ** 4;
+            const len = std.unicode.utf8Encode(event.data.keyboard.keychar, &buf) catch |e| switch(e) {
+                else => {std.log.err("{}", .{e}); break :blk;},
+            };
+            std.debug.warn("{}| Key", .{buf[0..len]});
+        },
+        .EVENT_MOUSE_PRESSED => std.debug.warn("↓m", .{}),
+        .EVENT_MOUSE_RELEASED => std.debug.warn("↑m", .{}),
+        .EVENT_MOUSE_CLICKED => std.debug.warn("· m", .{}),
+        .EVENT_MOUSE_WHEEL => std.debug.warn("w", .{}),
+        else => {return;},
+    }
+    std.debug.warn("\x1b[K", .{});
 }
 
 pub fn main() !void {
