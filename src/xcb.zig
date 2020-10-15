@@ -110,7 +110,7 @@ pub const Connection = opaque {
     
     extern fn xcb_get_atom_name(c: *Connection, atom: Atom) AtomNameCookie;
     extern fn xcb_get_atom_name_reply(c: *Connection, cookie: AtomNameCookie, e: ?*?*GenericError) *AtomNameReply;
-    const AtomNameCookie = AutoCookie(AtomNameReply, struct{const method = xcb_get_atom_name_reply;}, .can_error);
+    const AtomNameCookie = AutoCookie(AtomNameReply, struct{const method = xcb_get_atom_name_reply;}, .cannot_error);
     pub const getAtomName = xcb_get_atom_name;
     
     extern fn xcb_change_window_attributes_checked(c: *Connection, window: Window, value_mask: u32, value_list: [*]const u32) VoidCookie;
@@ -298,35 +298,20 @@ fn AutoCookie(comptime ReplyType: type, comptime ReplyMethod: type, comptime can
         .cannot_error => return extern struct {
             sequence: c_uint,
             const Reply = ReplyType;
-            pub fn wait(cookie: @This(), conn: *Connection) ReplyType {
+            pub fn wait(cookie: @This(), conn: *Connection) *ReplyType {
                 var err: ?*GenericError = null;
                 const result = ReplyMethod.method(conn, cookie, &err);
                 if(err) |er| {
                     std.log.err("Got error: {}", .{er.errorString()});
                     unreachable;
                 }
-                defer free(result);
-                return result.*;
-            }
-            pub fn waitPtr(cookie: @This(), conn: *Connection) *ReplyType {
-                return ReplyMethod.method(conn, cookie, null);
+                return result;
             }
         },
         .can_error => return extern struct {
             sequence: c_uint,
             const Reply = ReplyType;
-            pub fn wait(cookie: @This(), conn: *Connection) !ReplyType {
-                var err: ?*GenericError = null;
-                const result = ReplyMethod.method(conn, cookie, &err);
-                if(err) |er| {
-                    defer free(er);
-                    std.log.err("{}", .{er.errorString()});
-                    return error.XcbError;
-                }
-                defer free(result);
-                return result.*;
-            }
-            pub fn waitPtr(cookie: @This(), conn: *Connection) !*ReplyType {
+            pub fn wait(cookie: @This(), conn: *Connection) !*ReplyType {
                 var err: ?*GenericError = null;
                 const result = ReplyMethod.method(conn, cookie, &err);
                 if(err) |er| {

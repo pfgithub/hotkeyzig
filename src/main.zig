@@ -27,16 +27,13 @@ pub fn main() !void {
     
     // there is an xcb xinput extension
     
-    const input_devices = conn.listInputDevices().waitPtr(conn).devices();
+    const input_devices = conn.listInputDevices().wait(conn).devices();
     for(input_devices) |device| {
-        std.log.info("Got input device: {}", .{device});
-        // std.log.info("Got input device: {}", .{device.device_type});
-        // if(@enumToInt(device.device_type) == 0) continue;
-        if(conn.getAtomName(device.device_type).waitPtr(conn)) |atom| {
-            const text = atom.text();
-            // for(text) |char| std.log.info("Char: `{}`", .{char});
-            std.log.info("Type: `{}`", .{atom.text()});
-        } else |err| std.log.err("Err: {}", .{err});
+        // std.log.info("Got input device: {}", .{device});
+        std.log.info("Got input device #{}: {}", .{device.device_id, device.device_type});
+        if(@enumToInt(device.device_type) == 0) continue;
+        const atom_name = conn.getAtomName(device.device_type).wait(conn).text();
+        std.log.info("Type: `{}`", .{atom_name});
     }
     
     // ok new plan
