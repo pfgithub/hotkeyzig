@@ -98,15 +98,20 @@ pub const Connection = opaque {
     extern fn xcb_get_setup(c: *Connection) *const Setup;
     pub const setup = xcb_get_setup;
     
-    extern fn xcb_get_input_focus(c: *Connection) InputFocus;
-    extern fn xcb_get_input_focus_reply(c: *Connection, cookie: InputFocus, e: ?*?*GenericError) *InputFocus.Reply;
-    const InputFocus = AutoCookie(InputFocusReply, struct{const method = xcb_get_input_focus_reply;}, .cannot_error);
+    extern fn xcb_get_input_focus(c: *Connection) InputFocusCookie;
+    extern fn xcb_get_input_focus_reply(c: *Connection, cookie: InputFocusCookie, e: ?*?*GenericError) *InputFocusReply;
+    const InputFocusCookie = AutoCookie(InputFocusReply, struct{const method = xcb_get_input_focus_reply;}, .cannot_error);
     pub const getInputFocus = xcb_get_input_focus;
     
-    extern fn xcb_input_list_input_devices(c: *Connection) ListInputDevices;
-    extern fn xcb_input_list_input_devices_reply(c: *Connection, cookie: ListInputDevices, e: ?*?*GenericError) *ListInputDevices.Reply;
-    const ListInputDevices = AutoCookie(ListInputDevicesReply, struct{const method = xcb_input_list_input_devices_reply;}, .cannot_error);
+    extern fn xcb_input_list_input_devices(c: *Connection) ListInputDevicesCookie;
+    extern fn xcb_input_list_input_devices_reply(c: *Connection, cookie: ListInputDevicesCookie, e: ?*?*GenericError) *ListInputDevicesReply;
+    const ListInputDevicesCookie = AutoCookie(ListInputDevicesReply, struct{const method = xcb_input_list_input_devices_reply;}, .cannot_error);
     pub const listInputDevices = xcb_input_list_input_devices;
+    
+    extern fn xcb_get_atom_name(c: *Connection, atom: Atom) AtomNameCookie;
+    extern fn xcb_get_atom_name_reply(c: *Connection, cookie: AtomNameCookie, e: ?*?*GenericError) *AtomNameReply;
+    const AtomNameCookie = AutoCookie(AtomNameReply, struct{const method = xcb_get_atom_name_reply;}, .can_error);
+    pub const getAtomName = xcb_get_atom_name;
     
     extern fn xcb_change_window_attributes_checked(c: *Connection, window: Window, value_mask: u32, value_list: [*]const u32) VoidCookie;
     pub fn changeWindowAttribute(conn: *Connection, window: Window, value: WindowAttribute) VoidCookie {
@@ -142,6 +147,40 @@ pub const Connection = opaque {
     }
 };
 
+
+test "struct" {matches(AtomNameReply, c.xcb_get_atom_name_reply_t);}
+pub const AtomNameReply = extern struct {
+    response_type: u8,
+    pad0: u8,
+    sequence: u16,
+    length: u32,
+    name_len: u16,
+    pad1: [22]u8,
+    
+    extern fn xcb_get_atom_name_name(R: *const AtomNameReply) [*]u8;
+    extern fn xcb_get_atom_name_name_length(R: *const AtomNameReply) c_int;
+    pub const text = ptrLenToSliceFn(xcb_get_atom_name_name, xcb_get_atom_name_name_length);
+};
+
+/// ptr_fn: fn(a: ArgType) [*]ReturnType,
+/// len_fn: fn(a: ArgType) c_int,
+fn ptrLenToSliceFn(comptime ptr_fn: anytype, comptime len_fn: anytype) @TypeOf(ptrLenToSliceFnInternal(ptr_fn, len_fn).f) {
+    return ptrLenToSliceFnInternal(ptr_fn, len_fn).f;
+}
+fn ptrLenToSliceFnInternal(comptime ptr_fn: anytype, comptime len_fn: anytype) type {
+    const ti_ptr = @typeInfo(@TypeOf(ptr_fn));
+    const ti_len = @typeInfo(@TypeOf(len_fn));
+    
+    const ReturnType = @typeInfo(ti_ptr.Fn.return_type.?).Pointer.child;
+    const ArgType = ti_ptr.Fn.args[0].arg_type.?;
+    
+    return struct {
+        pub fn f(arg: ArgType) []ReturnType {
+            return ptr_fn(arg)[0..@intCast(usize, len_fn(arg))];
+        }
+    };
+}
+
 test "struct" {matches(ListInputDevicesReply, c.xcb_input_list_input_devices_reply_t);}
 pub const ListInputDevicesReply = extern struct {
     response_type: u8,
@@ -150,13 +189,10 @@ pub const ListInputDevicesReply = extern struct {
     length: u32,
     devices_len: u8,
     pad0: [23]u8,
-    pub fn devices(R: *const ListInputDevicesReply) []DeviceInfo {
-        return R.devicesPtr()[0..@intCast(usize, R.devicesLen())];
-    }
+    
     extern fn xcb_input_list_input_devices_devices(R: *const ListInputDevicesReply) [*]DeviceInfo;
-    pub const devicesPtr = xcb_input_list_input_devices_devices;
     extern fn xcb_input_list_input_devices_devices_length(R: *const ListInputDevicesReply) c_int;
-    pub const devicesLen = xcb_input_list_input_devices_devices_length;
+    pub const devices = ptrLenToSliceFn(xcb_input_list_input_devices_devices, xcb_input_list_input_devices_devices_length);
     
     extern fn xcb_input_list_input_devices_devices_iterator(R: *const ListInputDevicesReply) xcb_input_device_info_iterator_t;
     extern fn xcb_input_list_input_devices_infos_length(R: *const ListInputDevicesReply) c_int;
@@ -265,7 +301,10 @@ fn AutoCookie(comptime ReplyType: type, comptime ReplyMethod: type, comptime can
             pub fn wait(cookie: @This(), conn: *Connection) ReplyType {
                 var err: ?*GenericError = null;
                 const result = ReplyMethod.method(conn, cookie, &err);
-                if(err) |er| unreachable; // .cannot_error
+                if(err) |er| {
+                    std.log.err("Got error: {}", .{er.errorString()});
+                    unreachable;
+                }
                 defer free(result);
                 return result.*;
             }
@@ -276,9 +315,9 @@ fn AutoCookie(comptime ReplyType: type, comptime ReplyMethod: type, comptime can
             pub fn wait(cookie: @This(), conn: *Connection) !ReplyType {
                 var err: ?*GenericError = null;
                 const result = ReplyMethod.method(conn, cookie, &err);
-                std.log.info("Waited!", .{});
                 if(err) |er| {
                     defer free(er);
+                    std.log.err("{}", .{er.errorString()});
                     return error.XcbError;
                 }
                 defer free(result);

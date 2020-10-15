@@ -30,6 +30,12 @@ pub fn main() !void {
     const input_devices = conn.listInputDevices().wait(conn).devices();
     for(input_devices) |device| {
         std.log.info("Got input device: {}", .{device});
+        // if(@enumToInt(device.device_type) == 0) continue;
+        if(conn.getAtomName(device.device_type).wait(conn)) |atom| {
+            const text = atom.text();
+            for(text) |char| std.log.info("Char: `{}`", .{char});
+            std.log.info("Type: `{}`", .{atom.text()});
+        }else |err| std.log.err("Err: {}", .{err});
     }
     
     // ok new plan
