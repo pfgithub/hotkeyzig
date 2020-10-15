@@ -2,6 +2,7 @@ const std = @import("std");
 const c = @cImport({
     @cInclude("xcb/xcb.h");
     @cInclude("xcb/xcb_keysyms.h");
+    @cInclude("xcb/xinput.h");
 });
 pub usingnamespace @import("xcb_generated.zig");
 
@@ -28,6 +29,9 @@ const VisualID = enum(u32) {_};
 
 test "struct" {matches(Keycode, c.xcb_keycode_t);}
 const Keycode = enum(u8) {_};
+
+test "struct" {matches(Atom, c.xcb_atom_t);}
+const Atom = enum(u32) {_};
 
 test "struct" {matches(Screen, c.xcb_screen_t);}
 pub const Screen = extern struct {
@@ -99,6 +103,11 @@ pub const Connection = opaque {
     const InputFocus = AutoCookie(InputFocusReply, struct{const method = xcb_get_input_focus_reply;}, .cannot_error);
     pub const getInputFocus = xcb_get_input_focus;
     
+    extern fn xcb_input_list_input_devices(c: *Connection) ListInputDevices;
+    extern fn xcb_input_list_input_devices_reply(c: *Connection, cookie: ListInputDevices, e: ?*?*GenericError) *ListInputDevices.Reply;
+    const ListInputDevices = AutoCookie(ListInputDevicesReply, struct{const method = xcb_input_list_input_devices_reply;}, .cannot_error);
+    pub const listInputDevices = xcb_input_list_input_devices;
+    
     extern fn xcb_change_window_attributes_checked(c: *Connection, window: Window, value_mask: u32, value_list: [*]const u32) VoidCookie;
     pub fn changeWindowAttribute(conn: *Connection, window: Window, value: WindowAttribute) VoidCookie {
         var value_mask: u32 = 0;
@@ -131,6 +140,38 @@ pub const Connection = opaque {
         defer free(event);
         return event.*;
     }
+};
+
+test "struct" {matches(ListInputDevicesReply, c.xcb_input_list_input_devices_reply_t);}
+pub const ListInputDevicesReply = extern struct {
+    response_type: u8,
+    xi_reply_type: u8,
+    sequence: u16,
+    length: u32,
+    devices_len: u8,
+    pad0: [23]u8,
+    pub fn devices(R: *const ListInputDevicesReply) []DeviceInfo {
+        return R.devicesPtr()[0..@intCast(usize, R.devicesLen())];
+    }
+    extern fn xcb_input_list_input_devices_devices(R: *const ListInputDevicesReply) [*]DeviceInfo;
+    pub const devicesPtr = xcb_input_list_input_devices_devices;
+    extern fn xcb_input_list_input_devices_devices_length(R: *const ListInputDevicesReply) c_int;
+    pub const devicesLen = xcb_input_list_input_devices_devices_length;
+    
+    extern fn xcb_input_list_input_devices_devices_iterator(R: *const ListInputDevicesReply) xcb_input_device_info_iterator_t;
+    extern fn xcb_input_list_input_devices_infos_length(R: *const ListInputDevicesReply) c_int;
+    extern fn xcb_input_list_input_devices_infos_iterator(R: *const ListInputDevicesReply) xcb_input_input_info_iterator_t;
+    extern fn xcb_input_list_input_devices_names_length(R: *const ListInputDevicesReply) c_int;
+    extern fn xcb_input_list_input_devices_names_iterator(R: *const ListInputDevicesReply) xcb_str_iterator_t;
+};
+
+test "struct" {matches(DeviceInfo, c.xcb_input_device_info_t);}
+pub const DeviceInfo = extern struct {
+    device_type: Atom,
+    device_id: u8,
+    num_class_info: u8,
+    device_use: u8,
+    pad0: u8,
 };
 
 pub const GenericEvent = extern struct {
@@ -222,7 +263,9 @@ fn AutoCookie(comptime ReplyType: type, comptime ReplyMethod: type, comptime can
             sequence: c_uint,
             const Reply = ReplyType;
             pub fn wait(cookie: @This(), conn: *Connection) ReplyType {
-                const result = ReplyMethod.method(conn, cookie, null);
+                var err: ?*GenericError = null;
+                const result = ReplyMethod.method(conn, cookie, &err);
+                if(err) |er| unreachable; // .cannot_error
                 defer free(result);
                 return result.*;
             }
@@ -231,7 +274,7 @@ fn AutoCookie(comptime ReplyType: type, comptime ReplyMethod: type, comptime can
             sequence: c_uint,
             const Reply = ReplyType;
             pub fn wait(cookie: @This(), conn: *Connection) !ReplyType {
-                var err: ?[*]GenericError = null;
+                var err: ?*GenericError = null;
                 const result = ReplyMethod.method(conn, cookie, &err);
                 std.log.info("Waited!", .{});
                 if(err) |er| {

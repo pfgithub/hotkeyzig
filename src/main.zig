@@ -2,17 +2,17 @@ const std = @import("std");
 const xcb = @import("xcb.zig");
 
 pub fn main() !void {
-    const connection = xcb.Connection.connect(null, null);
-    defer connection.disconnect();
+    const conn = xcb.Connection.connect(null, null);
+    defer conn.disconnect();
     
     std.log.info("Connected", .{});
     defer std.log.info("Exiting", .{});
     
-    const screen = connection.setup().rootsIterator().data;
+    const screen = conn.setup().rootsIterator().data;
     
     const root = screen.root;
     
-    const focus = connection.getInputFocus().wait(connection);
+    const focus = conn.getInputFocus().wait(conn);
     
     std.log.info("Got focused window: {}", .{focus});
     
@@ -24,6 +24,13 @@ pub fn main() !void {
     //         XSelectExtensionEvent(display, root, &event_class, 1)
     //     }
     // }
+    
+    // there is an xcb xinput extension
+    
+    const input_devices = conn.listInputDevices().wait(conn).devices();
+    for(input_devices) |device| {
+        std.log.info("Got input device: {}", .{device});
+    }
     
     // ok new plan
     // https://github.com/cyrus-and/xkeylogger/blob/master/xkeylogger.c#L176
@@ -49,9 +56,9 @@ pub fn main() !void {
     //
     // ok the other option is taking over the keyboard and trying to fake events
     
-    try connection.changeWindowAttribute(focus.window, .{.event_mask = .{.key_press = true, .key_release = true, .focus_change = true}}).wait(connection);
+    // try conn.changeWindowAttribute(focus.window, .{.event_mask = .{.key_press = true, .key_release = true, .focus_change = true}}).wait(conn);
     
-    while(connection.waitForEvent()) |event| {
+    while(conn.waitForEvent()) |event| {
         // why does one example say to do (event->response_type & ~0x80)?
         std.log.info("Got event {}", .{event.tag()});
         switch(event.tag()) {

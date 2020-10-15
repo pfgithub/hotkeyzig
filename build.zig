@@ -52,6 +52,7 @@ pub fn build(b: *Builder) void {
         // zig build-exe lib/uiohook/demo/demo_hook.c -I lib/uiohook/include/ lib/uiohook/src/logger.c lib/uiohook/src/x11/*.c --name demo -lc -lX11 -I lib/uiohook/src/ -lXtst
         exe.linkLibC();
         exe.linkSystemLibrary("xcb");
+        exe.linkSystemLibrary("xcb-xinput");
         
         exe.install();
 
